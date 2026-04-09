@@ -1,0 +1,14 @@
+.next
+.next-local
+.logs
+node_modules
+.env
+.env.local
+coverage
+dist
+generated
+.tools/node
+.tools/node.zip
+*.log
+Thumbs.db
+.DS_Store
