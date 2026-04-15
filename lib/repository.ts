@@ -20,6 +20,47 @@ function parseResponses(input: unknown): SubmissionRecord["responses"] {
   return ResponsesSchema.parse(input) as SubmissionRecord["responses"];
 }
 
+const SectionScoreSchema = z.object({
+  section: z.enum(["strategy", "marketing", "sales", "operations", "finance", "people", "technology"]),
+  score: z.number(),
+  label: z.enum(["fragile", "developing", "stable", "advantaged"]),
+  summary: z.string()
+});
+
+const SectionScoresSchema = z.array(SectionScoreSchema);
+
+const RoadmapItemSchema = z.object({
+  id: z.string(),
+  section: z.enum(["strategy", "marketing", "sales", "operations", "finance", "people", "technology"]),
+  title: z.string(),
+  rationale: z.string(),
+  impact: z.enum(["low", "medium", "high"]),
+  effort: z.enum(["low", "medium", "high"]),
+  timeframe: z.enum(["1 day", "1 week", "2 weeks", "30 days", "60 days", "90 days"]),
+  order: z.number()
+});
+
+const RoadmapSchema = z.array(RoadmapItemSchema);
+
+function parseSectionScores(input: unknown): SubmissionRecord["summary"]["sectionScores"] {
+  return SectionScoresSchema.parse(input) as SubmissionRecord["summary"]["sectionScores"];
+}
+
+function parseRoadmap(input: unknown): SubmissionRecord["summary"]["roadmap"] {
+  return RoadmapSchema.parse(input) as SubmissionRecord["summary"]["roadmap"];
+}
+
+const OverallLabelSchema = z.enum(["fragile", "developing", "stable", "advantaged"]);
+function parseOverallLabel(input: unknown): SubmissionRecord["summary"]["overallLabel"] {
+  return OverallLabelSchema.parse(input) as SubmissionRecord["summary"]["overallLabel"];
+}
+
+const EmailStatusDBSchema = z.enum(["NOT_REQUESTED", "QUEUED", "SENT", "FAILED"]);
+function parseEmailStatusFromDB(input: unknown): SubmissionRecord["emailStatus"] {
+  const val = EmailStatusDBSchema.parse((input ?? "") as unknown);
+  return val.toLowerCase() as SubmissionRecord["emailStatus"];
+}
+
 const memoryStore = new Map<string, SubmissionRecord>();
 
 function useMemoryStore(): boolean {
@@ -60,11 +101,11 @@ export async function createSubmission(
       profile: payload.profile as never,
       responses: payload.responses as never,
       overallScore: summary.overallScore,
-      overallLabel: summary.overallLabel,
+      overallLabel: parseOverallLabel(summary.overallLabel) as never,
       topStrengths: summary.topStrengths,
       topRisks: summary.topRisks,
-      sectionScores: summary.sectionScores as never,
-      roadmap: summary.roadmap as never,
+      sectionScores: parseSectionScores(summary.sectionScores) as never,
+      roadmap: parseRoadmap(summary.roadmap) as never,
       emailStatus: "NOT_REQUESTED"
     }
   });
@@ -120,16 +161,16 @@ export async function updateSubmissionContact(
     responses,
     summary: {
       overallScore: updated.overallScore,
-      overallLabel: updated.overallLabel as SubmissionRecord["summary"]["overallLabel"],
+      overallLabel: parseOverallLabel(updated.overallLabel),
       topStrengths: updated.topStrengths,
       topRisks: updated.topRisks,
-      sectionScores: updated.sectionScores as SubmissionRecord["summary"]["sectionScores"],
-      roadmap: updated.roadmap as SubmissionRecord["summary"]["roadmap"]
+      sectionScores: parseSectionScores(updated.sectionScores),
+      roadmap: parseRoadmap(updated.roadmap)
     },
     reportHtml: updated.reportHtml ?? undefined,
     reportText: updated.reportText ?? undefined,
     pdfUrl: updated.pdfUrl ?? undefined,
-    emailStatus: updated.emailStatus.toLowerCase() as SubmissionRecord["emailStatus"],
+    emailStatus: parseEmailStatusFromDB(updated.emailStatus),
     contact
   });
 }
@@ -153,16 +194,16 @@ export async function getSubmission(id: string): Promise<SubmissionRecord | null
     responses,
     summary: {
       overallScore: found.overallScore,
-      overallLabel: found.overallLabel as SubmissionRecord["summary"]["overallLabel"],
+      overallLabel: parseOverallLabel(found.overallLabel),
       topStrengths: found.topStrengths,
       topRisks: found.topRisks,
-      sectionScores: found.sectionScores as SubmissionRecord["summary"]["sectionScores"],
-      roadmap: found.roadmap as SubmissionRecord["summary"]["roadmap"]
+      sectionScores: parseSectionScores(found.sectionScores),
+      roadmap: parseRoadmap(found.roadmap)
     },
     reportHtml: found.reportHtml ?? undefined,
     reportText: found.reportText ?? undefined,
     pdfUrl: found.pdfUrl ?? undefined,
-    emailStatus: found.emailStatus.toLowerCase() as SubmissionRecord["emailStatus"],
+    emailStatus: parseEmailStatusFromDB(found.emailStatus),
     contact: found.contactEmail
       ? {
           name: found.contactName ?? "",
@@ -192,16 +233,16 @@ export async function listSubmissions(): Promise<SubmissionRecord[]> {
       responses: parseResponses(item.responses),
       summary: {
         overallScore: item.overallScore,
-        overallLabel: item.overallLabel as SubmissionRecord["summary"]["overallLabel"],
+        overallLabel: parseOverallLabel(item.overallLabel),
         topStrengths: item.topStrengths,
         topRisks: item.topRisks,
-        sectionScores: item.sectionScores as SubmissionRecord["summary"]["sectionScores"],
-        roadmap: item.roadmap as SubmissionRecord["summary"]["roadmap"]
+        sectionScores: parseSectionScores(item.sectionScores),
+        roadmap: parseRoadmap(item.roadmap)
       },
       reportHtml: item.reportHtml ?? undefined,
       reportText: item.reportText ?? undefined,
       pdfUrl: item.pdfUrl ?? undefined,
-      emailStatus: item.emailStatus.toLowerCase() as SubmissionRecord["emailStatus"],
+      emailStatus: parseEmailStatusFromDB(item.emailStatus),
       contact: item.contactEmail
         ? {
             name: item.contactName ?? "",
