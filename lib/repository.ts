@@ -1,6 +1,24 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { ContactInfo, SubmissionPayload, SubmissionRecord } from "@/lib/types";
+import { z } from "zod";
+
+const BusinessProfileSchema = z.object({
+  stage: z.enum(["idea", "launch", "growth", "scale"]),
+  businessType: z.enum(["services", "ecommerce", "saas", "local", "agency", "other"]),
+  teamSize: z.enum(["solo", "2-10", "11-25", "26-50", "51+"]),
+  revenueBand: z.enum(["pre-revenue", "0-100k", "100k-500k", "500k-2m", "2m+"])
+});
+
+const ResponsesSchema = z.record(z.number());
+
+function parseProfile(input: unknown): SubmissionRecord["profile"] {
+  return BusinessProfileSchema.parse(input) as SubmissionRecord["profile"];
+}
+
+function parseResponses(input: unknown): SubmissionRecord["responses"] {
+  return ResponsesSchema.parse(input) as SubmissionRecord["responses"];
+}
 
 const memoryStore = new Map<string, SubmissionRecord>();
 
@@ -51,11 +69,14 @@ export async function createSubmission(
     }
   });
 
+  const profile = parseProfile(created.profile);
+  const responses = parseResponses(created.responses);
+
   return serializeRecord({
     id: created.id,
     createdAt: created.createdAt.toISOString(),
-    profile: created.profile as SubmissionRecord["profile"],
-    responses: created.responses as SubmissionRecord["responses"],
+    profile,
+    responses,
     summary,
     emailStatus: "not_requested"
   });
@@ -89,11 +110,14 @@ export async function updateSubmissionContact(
     }
   });
 
+  const profile = parseProfile(updated.profile);
+  const responses = parseResponses(updated.responses);
+
   return serializeRecord({
     id: updated.id,
     createdAt: updated.createdAt.toISOString(),
-    profile: updated.profile as SubmissionRecord["profile"],
-    responses: updated.responses as SubmissionRecord["responses"],
+    profile,
+    responses,
     summary: {
       overallScore: updated.overallScore,
       overallLabel: updated.overallLabel as SubmissionRecord["summary"]["overallLabel"],
@@ -119,11 +143,14 @@ export async function getSubmission(id: string): Promise<SubmissionRecord | null
 
   if (!found) return null;
 
+  const profile = parseProfile(found.profile);
+  const responses = parseResponses(found.responses);
+
   return serializeRecord({
     id: found.id,
     createdAt: found.createdAt.toISOString(),
-    profile: found.profile as SubmissionRecord["profile"],
-    responses: found.responses as SubmissionRecord["responses"],
+    profile,
+    responses,
     summary: {
       overallScore: found.overallScore,
       overallLabel: found.overallLabel as SubmissionRecord["summary"]["overallLabel"],
@@ -161,8 +188,8 @@ export async function listSubmissions(): Promise<SubmissionRecord[]> {
     serializeRecord({
       id: item.id,
       createdAt: item.createdAt.toISOString(),
-      profile: item.profile as SubmissionRecord["profile"],
-      responses: item.responses as SubmissionRecord["responses"],
+      profile: parseProfile(item.profile),
+      responses: parseResponses(item.responses),
       summary: {
         overallScore: item.overallScore,
         overallLabel: item.overallLabel as SubmissionRecord["summary"]["overallLabel"],
