@@ -62,7 +62,7 @@ export interface QuestionDefinition {
   weight: number;
   stageRelevance?: Partial<Record<BusinessStage, number>>;
   recommendedFor?: BusinessType[];
-  options: QuestionOption[];
+  options: readonly QuestionOption[];
 }
 
 export interface SectionScore {
