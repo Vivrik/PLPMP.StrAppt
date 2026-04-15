@@ -33,7 +33,7 @@ export type SectionId =
 
 export type ImpactLevel = "low" | "medium" | "high";
 export type EffortLevel = "low" | "medium" | "high";
-export type Timeframe = "30 days" | "60 days" | "90 days";
+export type Timeframe = "1 day" | "1 week" | "2 weeks" | "30 days" | "60 days" | "90 days";
 
 export interface BusinessProfile {
   stage: BusinessStage;

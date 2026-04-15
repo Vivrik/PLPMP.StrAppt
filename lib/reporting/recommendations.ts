@@ -100,6 +100,15 @@ export function buildRoadmap(
   sectionScores: SectionScore[]
 ): RoadmapItem[] {
   const prioritized = [...sectionScores].sort((left, right) => left.score - right.score);
+  const timeframes = [
+    "1 day",
+    "1 week",
+    "2 weeks",
+    "30 days",
+    "60 days",
+    "90 days"
+  ] as const;
+
   const roadmap = prioritized.slice(0, 4).map((section, index) => {
     const template = playbook[section.section];
     const rationale =
@@ -116,7 +125,7 @@ export function buildRoadmap(
       rationale: `${rationale} This matters especially for a ${payload.profile.stage}-stage ${payload.profile.businessType} business.`,
       impact: template.impact,
       effort: template.effort,
-      timeframe: index < 2 ? "30 days" : index === 2 ? "60 days" : "90 days",
+      timeframe: timeframes[index] as RoadmapItem["timeframe"],
       order: index + 1
     };
   });
