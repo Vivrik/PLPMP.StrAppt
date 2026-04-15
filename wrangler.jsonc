@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "plpmp-strappt",
+  "compatibility_date": "2026-04-15",
+  "main": ".worker-next/index.mjs",
+  "observability": {
+    "enabled": true
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": ".worker-next/assets",
+    "binding": "ASSETS"
+  }
+}

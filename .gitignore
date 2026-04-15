@@ -1,5 +1,4 @@
 .next
-.next-local
 .logs
 node_modules
 .env

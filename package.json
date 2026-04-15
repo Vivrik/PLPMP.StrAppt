@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
   },
   "dependencies": {
     "@prisma/client": "^6.7.0",
@@ -21,11 +23,13 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.19.1",
     "@types/node": "^22.14.1",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.5",
     "prisma": "^6.7.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.1"
+    "vitest": "^3.1.1",
+    "wrangler": "^4.0.0"
   }
 }
