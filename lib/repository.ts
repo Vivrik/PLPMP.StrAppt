@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { ContactInfo, SubmissionPayload, SubmissionRecord } from "@/lib/types";
 import { z } from "zod";
 
@@ -61,17 +61,58 @@ function parseEmailStatusFromDB(input: unknown): SubmissionRecord["emailStatus"]
   return val.toLowerCase() as SubmissionRecord["emailStatus"];
 }
 
+interface SubmissionRow {
+  id: string;
+  created_at: string;
+  profile: unknown;
+  responses: unknown;
+  overall_score: number;
+  overall_label: string;
+  top_strengths: string[];
+  top_risks: string[];
+  section_scores: unknown;
+  roadmap: unknown;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_company: string | null;
+  report_html: string | null;
+  report_text: string | null;
+  pdf_url: string | null;
+  email_status: string;
+}
+
+function rowToRecord(row: SubmissionRow): SubmissionRecord {
+  return {
+    id: row.id,
+    createdAt: new Date(row.created_at).toISOString(),
+    profile: parseProfile(row.profile),
+    responses: parseResponses(row.responses),
+    summary: {
+      overallScore: row.overall_score,
+      overallLabel: parseOverallLabel(row.overall_label),
+      topStrengths: row.top_strengths,
+      topRisks: row.top_risks,
+      sectionScores: parseSectionScores(row.section_scores),
+      roadmap: parseRoadmap(row.roadmap)
+    },
+    reportHtml: row.report_html ?? undefined,
+    reportText: row.report_text ?? undefined,
+    pdfUrl: row.pdf_url ?? undefined,
+    emailStatus: parseEmailStatusFromDB(row.email_status),
+    contact: row.contact_email
+      ? {
+          name: row.contact_name ?? "",
+          email: row.contact_email,
+          company: row.contact_company ?? undefined
+        }
+      : undefined
+  };
+}
+
 const memoryStore = new Map<string, SubmissionRecord>();
 
 function useMemoryStore(): boolean {
-  return process.env.USE_IN_MEMORY_STORE === "true" || !process.env.DATABASE_URL;
-}
-
-function serializeRecord(record: SubmissionRecord): SubmissionRecord {
-  return {
-    ...record,
-    createdAt: new Date(record.createdAt).toISOString()
-  };
+  return process.env.USE_IN_MEMORY_STORE === "true" || !process.env.SUPABASE_URL;
 }
 
 export async function createSubmission(
@@ -90,37 +131,30 @@ export async function createSubmission(
       summary,
       emailStatus: "not_requested"
     };
-
     memoryStore.set(id, record);
     return record;
   }
 
-  const created = await prisma.submission.create({
-    data: {
+  const { data, error } = await supabase
+    .from("submissions")
+    .insert({
       id,
-      profile: payload.profile as never,
-      responses: payload.responses as never,
-      overallScore: summary.overallScore,
-      overallLabel: parseOverallLabel(summary.overallLabel) as never,
-      topStrengths: summary.topStrengths,
-      topRisks: summary.topRisks,
-      sectionScores: parseSectionScores(summary.sectionScores) as never,
-      roadmap: parseRoadmap(summary.roadmap) as never,
-      emailStatus: "NOT_REQUESTED"
-    }
-  });
+      profile: payload.profile,
+      responses: payload.responses,
+      overall_score: summary.overallScore,
+      overall_label: parseOverallLabel(summary.overallLabel),
+      top_strengths: summary.topStrengths,
+      top_risks: summary.topRisks,
+      section_scores: parseSectionScores(summary.sectionScores),
+      roadmap: parseRoadmap(summary.roadmap),
+      email_status: "NOT_REQUESTED"
+    })
+    .select()
+    .single();
 
-  const profile = parseProfile(created.profile);
-  const responses = parseResponses(created.responses);
+  if (error) throw new Error(`Failed to create submission: ${error.message}`);
 
-  return serializeRecord({
-    id: created.id,
-    createdAt: created.createdAt.toISOString(),
-    profile,
-    responses,
-    summary,
-    emailStatus: "not_requested"
-  });
+  return rowToRecord(data as SubmissionRow);
 }
 
 export async function updateSubmissionContact(
@@ -130,49 +164,33 @@ export async function updateSubmissionContact(
 ): Promise<SubmissionRecord | null> {
   if (useMemoryStore()) {
     const current = memoryStore.get(id);
-
     if (!current) return null;
-
     const updated: SubmissionRecord = { ...current, contact, ...report };
     memoryStore.set(id, updated);
     return updated;
   }
 
-  const updated = await prisma.submission.update({
-    where: { id },
-    data: {
-      contactName: contact.name,
-      contactEmail: contact.email,
-      contactCompany: contact.company,
-      reportHtml: report.reportHtml,
-      reportText: report.reportText,
-      pdfUrl: report.pdfUrl,
-      emailStatus: report.emailStatus.toUpperCase() as never
-    }
-  });
+  const { data, error } = await supabase
+    .from("submissions")
+    .update({
+      contact_name: contact.name,
+      contact_email: contact.email,
+      contact_company: contact.company,
+      report_html: report.reportHtml,
+      report_text: report.reportText,
+      pdf_url: report.pdfUrl,
+      email_status: report.emailStatus.toUpperCase()
+    })
+    .eq("id", id)
+    .select()
+    .single();
 
-  const profile = parseProfile(updated.profile);
-  const responses = parseResponses(updated.responses);
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    throw new Error(`Failed to update submission: ${error.message}`);
+  }
 
-  return serializeRecord({
-    id: updated.id,
-    createdAt: updated.createdAt.toISOString(),
-    profile,
-    responses,
-    summary: {
-      overallScore: updated.overallScore,
-      overallLabel: parseOverallLabel(updated.overallLabel),
-      topStrengths: updated.topStrengths,
-      topRisks: updated.topRisks,
-      sectionScores: parseSectionScores(updated.sectionScores),
-      roadmap: parseRoadmap(updated.roadmap)
-    },
-    reportHtml: updated.reportHtml ?? undefined,
-    reportText: updated.reportText ?? undefined,
-    pdfUrl: updated.pdfUrl ?? undefined,
-    emailStatus: parseEmailStatusFromDB(updated.emailStatus),
-    contact
-  });
+  return rowToRecord(data as SubmissionRow);
 }
 
 export async function getSubmission(id: string): Promise<SubmissionRecord | null> {
@@ -180,38 +198,18 @@ export async function getSubmission(id: string): Promise<SubmissionRecord | null
     return memoryStore.get(id) ?? null;
   }
 
-  const found = await prisma.submission.findUnique({ where: { id } });
+  const { data, error } = await supabase
+    .from("submissions")
+    .select("*")
+    .eq("id", id)
+    .single();
 
-  if (!found) return null;
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    throw new Error(`Failed to get submission: ${error.message}`);
+  }
 
-  const profile = parseProfile(found.profile);
-  const responses = parseResponses(found.responses);
-
-  return serializeRecord({
-    id: found.id,
-    createdAt: found.createdAt.toISOString(),
-    profile,
-    responses,
-    summary: {
-      overallScore: found.overallScore,
-      overallLabel: parseOverallLabel(found.overallLabel),
-      topStrengths: found.topStrengths,
-      topRisks: found.topRisks,
-      sectionScores: parseSectionScores(found.sectionScores),
-      roadmap: parseRoadmap(found.roadmap)
-    },
-    reportHtml: found.reportHtml ?? undefined,
-    reportText: found.reportText ?? undefined,
-    pdfUrl: found.pdfUrl ?? undefined,
-    emailStatus: parseEmailStatusFromDB(found.emailStatus),
-    contact: found.contactEmail
-      ? {
-          name: found.contactName ?? "",
-          email: found.contactEmail,
-          company: found.contactCompany ?? undefined
-        }
-      : undefined
-  });
+  return rowToRecord(data as SubmissionRow);
 }
 
 export async function listSubmissions(): Promise<SubmissionRecord[]> {
@@ -221,35 +219,12 @@ export async function listSubmissions(): Promise<SubmissionRecord[]> {
     );
   }
 
-  const submissions = await prisma.submission.findMany({
-    orderBy: { createdAt: "desc" }
-  });
+  const { data, error } = await supabase
+    .from("submissions")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-  return submissions.map((item) =>
-    serializeRecord({
-      id: item.id,
-      createdAt: item.createdAt.toISOString(),
-      profile: parseProfile(item.profile),
-      responses: parseResponses(item.responses),
-      summary: {
-        overallScore: item.overallScore,
-        overallLabel: parseOverallLabel(item.overallLabel),
-        topStrengths: item.topStrengths,
-        topRisks: item.topRisks,
-        sectionScores: parseSectionScores(item.sectionScores),
-        roadmap: parseRoadmap(item.roadmap)
-      },
-      reportHtml: item.reportHtml ?? undefined,
-      reportText: item.reportText ?? undefined,
-      pdfUrl: item.pdfUrl ?? undefined,
-      emailStatus: parseEmailStatusFromDB(item.emailStatus),
-      contact: item.contactEmail
-        ? {
-            name: item.contactName ?? "",
-            email: item.contactEmail,
-            company: item.contactCompany ?? undefined
-          }
-        : undefined
-    })
-  );
+  if (error) throw new Error(`Failed to list submissions: ${error.message}`);
+
+  return (data ?? []).map((row) => rowToRecord(row as SubmissionRow));
 }
